@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload, CheckCircle, Camera, Search, RotateCcw,
-  Keyboard, MapPin, AlertCircle, X, HelpCircle, LogOut,
+  Keyboard, MapPin, AlertCircle, X, HelpCircle, LogOut, Shield,
 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import {
@@ -31,7 +31,7 @@ function listarOutrasParadas(numeros: number[], limite = 5): string {
 }
 
 export default function App() {
-  const { signOut } = useAuth();
+  const { signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [screen, setScreen] = useState<Screen>('home');
   const [tabela, setTabela] = useState<TabelaRota>({});
@@ -308,6 +308,15 @@ export default function App() {
                   <RotateCcw className="w-4 h-4" />
                   Nova rota
                 </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => navigate('/admin-painel')}
+                    className="w-8 h-8 flex items-center justify-center bg-amber-400/10 hover:bg-amber-400/20 active:scale-95 transition-all rounded-xl text-amber-400"
+                    title="Painel Admin"
+                  >
+                    <Shield className="w-4 h-4" />
+                  </button>
+                )}
                 <button
                   onClick={async () => { await signOut(); navigate('/login'); }}
                   className="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-gray-700 active:scale-95 transition-all rounded-xl text-gray-500 hover:text-gray-300"

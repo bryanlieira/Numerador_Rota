@@ -7,6 +7,7 @@ import AdminRoute from './components/AdminRoute';
 import App from './App';
 import LoginPage from './pages/LoginPage';
 import AssinaturaExpiradaPage from './pages/AssinaturaExpiradaPage';
+import EsqueciSenhaPage from './pages/EsqueciSenhaPage';
 import AdminPainelPage from './pages/AdminPainelPage';
 import './index.css';
 
@@ -17,7 +18,7 @@ createRoot(document.getElementById('root')!).render(
         <Routes>
           {/* Public */}
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/assinatura-expirada" element={<AssinaturaExpiradaPage />} />
+          <Route path="/esqueci-senha" element={<EsqueciSenhaPage />} />
 
           {/* Protected scanner */}
           <Route
@@ -28,6 +29,8 @@ createRoot(document.getElementById('root')!).render(
               </ProtectedRoute>
             }
           />
+
+          <Route path="/assinatura-expirada" element={<AssinaturaExpiradaPage />} />
 
           {/* Admin panel */}
           <Route

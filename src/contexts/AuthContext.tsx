@@ -8,6 +8,8 @@ export interface Profile {
   subscription_active: boolean;
   expires_at: string | null;
   plano: string | null;
+  plan_type: string | null;
+  subscription_expires_at: string | null;
   created_at: string;
 }
 
@@ -56,11 +58,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       (async () => {
         setSession(s);
         setUser(s?.user ?? null);
         if (s?.user) {
+          // Ensure profile row exists for new signups (trigger may lag)
+          if (event === 'SIGNED_IN') {
+            await supabase.from('profiles').upsert(
+              { id: s.user.id, email: s.user.email ?? '', subscription_active: false },
+              { onConflict: 'id', ignoreDuplicates: true }
+            );
+          }
           await fetchProfile(s.user.id);
         } else {
           setProfile(null);
@@ -75,7 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isSubscribed = isAdmin || (
     !!profile?.subscription_active &&
-    (!profile.expires_at || new Date(profile.expires_at) > new Date())
+    (() => {
+      const exp = profile.subscription_expires_at ?? profile.expires_at;
+      return !exp || new Date(exp) > new Date();
+    })()
   );
 
   const signOut = async () => {

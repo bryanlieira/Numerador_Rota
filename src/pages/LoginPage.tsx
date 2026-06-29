@@ -30,8 +30,15 @@ export default function LoginPage() {
         if (err) throw err;
         navigate(from, { replace: true });
       } else {
-        const { error: err } = await supabase.auth.signUp({ email, password });
+        const { data: signUpData, error: err } = await supabase.auth.signUp({ email, password });
         if (err) throw err;
+        // Ensure profile row exists (trigger may be delayed or fail silently)
+        if (signUpData.user) {
+          await supabase.from('profiles').upsert(
+            { id: signUpData.user.id, email: signUpData.user.email ?? email, subscription_active: false },
+            { onConflict: 'id', ignoreDuplicates: true }
+          );
+        }
         setSuccess('Conta criada! Faça login abaixo.');
         setMode('login');
       }
@@ -139,6 +146,15 @@ export default function LoginPage() {
                 : mode === 'login' ? 'Entrar' : 'Criar conta'}
             </button>
           </form>
+
+          {mode === 'login' && (
+            <Link
+              to="/esqueci-senha"
+              className="text-center text-gray-500 hover:text-amber-400 text-xs transition-colors"
+            >
+              Esqueceu sua senha?
+            </Link>
+          )}
         </div>
 
         {/* Subscribe CTA */}
@@ -155,10 +171,7 @@ export default function LoginPage() {
           <p className="text-gray-600 text-xs">Após o pagamento, crie sua conta aqui e o acesso será liberado automaticamente.</p>
         </div>
 
-        <p className="text-center text-gray-600 text-xs">
-          Ao criar uma conta, você concorda com o uso do app para fins pessoais.{' '}
-          <Link to="/" className="text-gray-500 underline">Voltar</Link>
-        </p>
+
       </div>
     </div>
   );

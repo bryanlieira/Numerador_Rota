@@ -14,39 +14,68 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  // ── Auth: only the admin JWT may call this ────────────────────────────────
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const anonClient = createClient(
+  // ── Service-role client (bypasses RLS, used for everything) ──────────────
+  const serviceClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } }
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    { auth: { persistSession: false } }
   );
-  const { data: { user }, error: userErr } = await anonClient.auth.getUser();
-  if (userErr || !user || user.email !== ADMIN_EMAIL) {
+
+  // ── Validate caller JWT ───────────────────────────────────────────────────
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  if (!token) {
+    console.error("[admin-profiles] sem token na requisição");
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  // ── Service-role client (bypasses RLS) ────────────────────────────────────
-  const admin = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+  // Use service client to validate the user token — more reliable than anon client inside edge functions
+  const { data: { user }, error: userErr } = await serviceClient.auth.getUser(token);
+
+  if (userErr) {
+    console.error("[admin-profiles] getUser error:", userErr.message);
+    return new Response(JSON.stringify({ error: "unauthorized", detail: userErr.message }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!user) {
+    console.error("[admin-profiles] token inválido ou expirado");
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (user.email !== ADMIN_EMAIL) {
+    console.warn(`[admin-profiles] acesso negado para ${user.email}`);
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  console.log(`[admin-profiles] acesso autorizado para ${user.email}`);
 
   // GET → list all profiles
   if (req.method === "GET") {
-    const { data, error } = await admin
+    const { data, error } = await serviceClient
       .from("profiles")
       .select("id, email, subscription_active, expires_at, plano, plan_type, subscription_expires_at, created_at")
       .order("created_at", { ascending: false });
+
     if (error) {
+      console.error("[admin-profiles] erro ao listar profiles:", error.message);
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    console.log(`[admin-profiles] retornando ${data?.length ?? 0} perfis`);
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -56,29 +85,36 @@ Deno.serve(async (req: Request) => {
   if (req.method === "POST") {
     const body = await req.json();
     const { id, subscription_active, subscription_expires_at, plan_type, expires_at, plano } = body;
+
     if (!id) {
       return new Response(JSON.stringify({ error: "id required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const { error } = await admin
+
+    console.log(`[admin-profiles] atualizando perfil id=${id} subscription_active=${subscription_active} plan_type=${plan_type}`);
+
+    const { error } = await serviceClient
       .from("profiles")
       .update({
         subscription_active: subscription_active ?? false,
         subscription_expires_at: subscription_expires_at ?? null,
         plan_type: plan_type ?? null,
-        // keep legacy columns in sync
         expires_at: expires_at ?? subscription_expires_at ?? null,
         plano: plano ?? plan_type ?? null,
       })
       .eq("id", id);
+
     if (error) {
+      console.error("[admin-profiles] erro ao atualizar perfil:", error.message);
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    console.log(`[admin-profiles] perfil ${id} atualizado com sucesso`);
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
